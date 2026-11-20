@@ -1,0 +1,56 @@
+{
+  "name": "depup-office-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "predev": "node scripts/assets.mjs",
+    "dev": "next dev",
+    "prebuild": "node scripts/assets.mjs",
+    "build": "next build",
+    "start": "node scripts/preview.mjs",
+    "lint": "eslint src scripts",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/smoke.mjs",
+    "test:webkit": "node scripts/webkit-smoke.mjs"
+  },
+  "dependencies": {
+    "@e965/xlsx": "0.20.3",
+    "@neslinesli93/qpdf-wasm": "^0.3.1",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@tesseract.js-data/ind": "^1.0.0",
+    "@zxing/browser": "^0.2.1",
+    "@zxing/library": "^0.23.0",
+    "docx": "^9.16.0",
+    "dompurify": "^3.4.18",
+    "exceljs": "^4.4.0",
+    "fast-formula-parser": "^1.0.19",
+    "idb-keyval": "^6.3.0",
+    "jsbarcode": "^3.12.3",
+    "jszip": "^3.10.2",
+    "lucide-react": "^1.77.0",
+    "mammoth": "^1.13.0",
+    "next": "16.4.6",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.5.438",
+    "qrcode": "^1.5.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "tesseract.js": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/jsbarcode": "^3.11.4",
+    "@types/node": "^20",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.6",
+    "playwright": "^1.65.1",
+    "typescript": "^5"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "11.1.1"
+    }
+  }
+}

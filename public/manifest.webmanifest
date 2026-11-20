@@ -1,0 +1,15 @@
+{
+  "id": "/",
+  "name": "DepUp Office",
+  "short_name": "DepUp Office",
+  "description": "Ruang kerja dokumen, pemindai, dan alat PDF.",
+  "lang": "id",
+  "start_url": "/office/",
+  "display": "standalone",
+  "background_color": "#ede8ff",
+  "theme_color": "#1e1150",
+  "icons": [
+    { "src": "/brand/depup-mark.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/brand/depup-mark-install.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
