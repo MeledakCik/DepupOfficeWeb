@@ -7,6 +7,7 @@ import { baseName } from "@/lib/catalog";
 import { cellKey, columnName, displaySheetValue, emptySheet, formulaEvaluator, readDelimited, readSheets, writeSheets, type SheetCell, type SheetData } from "@/lib/office";
 import { sheetTemplate } from "@/lib/templates";
 import { download, type Output, type Preferences, type StoredDocument } from "@/lib/workspace";
+import { SelectBox } from "./select-box";
 
 const pageRows = 28;
 const pageCols = 12;
@@ -158,9 +159,9 @@ export default function SheetEditor({ record, template, preferences, save }: {
         <button aria-label="Tebal" title="Tebal" aria-pressed={!!selectedCell.bold} onClick={() => changeCell(y, x, { bold: !selectedCell.bold })}><Bold size={16} /></button>
         <button aria-label="Miring" title="Miring" aria-pressed={!!selectedCell.italic} onClick={() => changeCell(y, x, { italic: !selectedCell.italic })}><Italic size={16} /></button>
         <input type="color" value={selectedCell.fill ?? "#ffffff"} aria-label="Warna sel" onChange={(event) => changeCell(y, x, { fill: event.target.value })} />
-        <select aria-label="Format angka" value={selectedCell.format?.includes(preferences.currency) ? "money" : selectedCell.format === "0.00%" ? "percent" : "General"} onChange={(event) =>
-          changeCell(y, x, { format: event.target.value === "money" ? '"' + preferences.currency + '" #,##0.00' : event.target.value === "percent" ? "0.00%" : "General" })}>
-          <option value="General">Umum</option><option value="money">Mata uang</option><option value="percent">Persentase</option></select>
+        <SelectBox label="Format angka" value={selectedCell.format?.includes(preferences.currency) ? "money" : selectedCell.format === "0.00%" ? "percent" : "General"}
+          options={[["General", "Umum"], ["money", "Mata uang"], ["percent", "Persentase"]]} onChange={(value) =>
+            changeCell(y, x, { format: value === "money" ? '"' + preferences.currency + '" #,##0.00' : value === "percent" ? "0.00%" : "General" })} />
         <button aria-label="Jumlah otomatis" title="Jumlah otomatis" onClick={sum}><FunctionSquare size={16} /> SUM</button>
         {preferences.autosum && y > 1 && <button onClick={sum}>Jumlah kolom {columnName(x)}</button>}
         <button aria-pressed={finding} onClick={() => setFinding(!finding)}><Search size={16} /> Cari</button>

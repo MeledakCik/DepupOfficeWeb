@@ -23,6 +23,11 @@ const close = () => dialog.getByRole("button", { name: "Tutup", exact: true }).c
 const checked = (test) => console.log("✓ " + test);
 const shown = (locator) => locator.waitFor({ state: "visible" });
 const button = (target, name) => target.getByRole("button", { name, exact: typeof name === "string" });
+const combobox = (target, name) => target.getByRole("combobox", { name, exact: true });
+async function choose(target, label, option) {
+  await combobox(target, label).click();
+  await target.getByRole("option", { name: option, exact: true }).click();
+}
 const navigate = (name) => button(nav, name).click();
 const openTool = async (title) => {
   await navigate("Alat");
@@ -64,7 +69,8 @@ try {
   assert.equal(await sculpture.evaluate((img) => getComputedStyle(img.parentElement).animationName), "none");
   await page.getByRole("link", { name: "Jelajahi fitur" }).click();
   assert.equal(new URL(page.url()).hash, "#fitur");
-  await page.getByRole("link", { name: /Buka pemindai/ }).click();
+  await page.getByRole("link", { name: /Scan dokumen ke PDF/ }).click();
+  await page.getByRole("link", { name: "Buka pemindai", exact: true }).click();
   await shown(page.getByRole("heading", { name: "Scan dokumen" }));
   await page.goto(new URL("/#alat", url).href);
   await page.waitForURL("**/office/#alat");
@@ -73,9 +79,25 @@ try {
   await navigate("Beranda");
   checked("Landing responsif, gambar mobile, reduced motion, tautan fitur, dan tautan lama");
   await shown(page.getByRole("heading", { name: /Selamat/ }));
-  for (const width of [360, 390, 768, 1024, 1440]) {
+  for (const width of [320, 390, 768, 959, 960, 1024, 1440, 1920]) {
     await page.setViewportSize({ width, height: 900 });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "Overflow horizontal pada " + width);
+    assert.equal(await nav.count(), 1);
+    assert.equal(await nav.getByRole("button").count(), 5);
+    assert.equal(await button(nav, "Beranda").getAttribute("aria-current"), "page");
+    const first = await button(nav, "Beranda").boundingBox();
+    const last = await button(nav, "Saya").boundingBox();
+    const formats = await page.locator(".dashboard-formats").boundingBox();
+    if (width >= 960) {
+      const recent = await page.getByRole("region", { name: "Baru dibuka" }).boundingBox();
+      const scanner = await page.getByRole("region", { name: "Scan dokumen" }).boundingBox();
+      assert.ok(last.y >= first.y + first.height && first.x === last.x, "Sidebar desktop " + width);
+      assert.ok(first.x + first.width <= recent.x && recent.x + recent.width <= formats.x + 1, "Panel desktop " + width);
+      assert.ok(Math.abs(recent.y - scanner.y) < 2 && recent.x + recent.width <= scanner.x, "Dokumen dan pemindai berdampingan " + width);
+      assert.equal(await nav.evaluate((node) => getComputedStyle(node).boxShadow), "none");
+    } else {
+      assert.ok(last.x > first.x && Math.abs(first.y - last.y) < 2 && first.y > 800, "Navigasi bawah " + width);
+    }
   }
   await button(page, "Ganti tema").click();
   assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
@@ -85,25 +107,43 @@ try {
   checked("Beranda responsif, tema, dan pintasan pencarian");
 
   await navigate("Saya");
+  assert.equal(await button(nav, "Saya").getAttribute("aria-current"), "page", "Navigasi aktif sesuai halaman pengaturan");
+  const settingsPanels = page.locator(".settings-grid > .settings");
+  const desktopSettings = await Promise.all((await settingsPanels.all()).map((panel) => panel.boundingBox()));
+  assert.equal(desktopSettings.length, 4, "Empat panel pengaturan");
+  assert.ok(Math.abs(desktopSettings[0].y - desktopSettings[1].y) < 2, "Tampilan dan format sejajar pada desktop");
+  assert.ok(Math.abs(desktopSettings[2].y - desktopSettings[3].y) < 2 && desktopSettings[2].y > desktopSettings[0].y, "Penyimpanan dan dukungan mengisi baris kedua");
   await page.getByLabel("Animasi antarmuka").uncheck();
-  await page.getByLabel("Transparansi navigasi").uncheck();
+  await page.getByLabel("Blur antarmuka").uncheck();
+  await page.getByLabel("Efek kaca").uncheck();
   await page.reload({ waitUntil: "load" });
   await shown(page.getByRole("heading", { name: "Saya" }));
   assert.equal(await page.getByLabel("Animasi antarmuka").isChecked(), false);
   assert.equal(await page.locator(".topbar").evaluate((bar) => getComputedStyle(bar).backdropFilter), "none");
   assert.equal(await page.locator(".workspace-view").evaluate((view) => getComputedStyle(view).animationName), "none");
-  await page.getByLabel("Animasi antarmuka").check();
-  await page.getByLabel("Transparansi navigasi").check();
+  assert.equal(await page.getByRole("slider", { name: /Kepekatan kaca/ }).isDisabled(), true);
+  await button(page, "Pulihkan tampilan bawaan").click();
+  const tone = page.getByRole("slider", { name: /Kepekatan kaca/ });
+  await tone.press("End");
+  assert.equal(await page.locator("html").evaluate((root) => root.style.getPropertyValue("--glass-opacity")), "98%");
+  await button(page, "Pulihkan tampilan bawaan").click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileSettings = await Promise.all((await settingsPanels.all()).map((panel) => panel.boundingBox()));
+  assert.ok(mobileSettings.every((panel, index) => index === 0 || panel.y > mobileSettings[index - 1].y), "Panel pengaturan bertumpuk rapi pada ponsel");
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "Pengaturan tanpa overflow pada ponsel");
+  await page.setViewportSize({ width: 1920, height: 950 });
   await navigate("Alat");
-  const categories = page.getByRole("group", { name: "Kategori alat" });
-  await button(categories, "Kelola PDF").click();
-  assert.equal(await button(categories, "Kelola PDF").getAttribute("aria-pressed"), "true");
+  const categories = combobox(page, "Kategori alat");
+  await categories.press("ArrowDown");
+  await categories.press("ArrowDown");
+  await categories.press("Enter");
+  assert.match(await categories.innerText(), /Kelola PDF/);
   await shown(button(page, /^Gabung PDF/));
   assert.equal(await button(page, /^Nota & kuitansi/).count(), 0);
   await page.getByLabel("Cari alat", { exact: true }).fill("tanpa hasil");
   await shown(page.getByText("Tidak ada alat yang cocok."));
   await button(page, "Tampilkan semua alat").click();
-  assert.equal(await button(categories, "Semua alat").getAttribute("aria-pressed"), "true");
+  assert.match(await categories.innerText(), /Semua alat/);
   await shown(button(page, /^Nota & kuitansi/));
   await navigate("Beranda");
   checked("Preferensi tampilan tersimpan, filter kategori dan pencarian alat dapat direset");
@@ -167,8 +207,9 @@ try {
   await shown(dialog.locator("canvas[aria-label='Tampilan halaman 1']"));
   const readingArea = dialog.getByRole("region", { name: "Halaman dokumen PDF" });
   const pageNumber = dialog.getByLabel("Nomor halaman", { exact: true });
-  const pdfLayout = dialog.getByLabel("Tata letak PDF", { exact: true });
-  assert.equal(await pdfLayout.inputValue(), "continuous");
+  const pdfLayout = combobox(dialog, "Tata letak PDF");
+  assert.match(await pdfLayout.innerText(), /Gulir terus/);
+  assert.equal(await button(dialog, "Daftar halaman").getAttribute("aria-expanded"), "false");
   assert.ok(await readingArea.evaluate((view) => view.scrollHeight > view.clientHeight));
   await readingArea.hover();
   await page.mouse.wheel(0, 510);
@@ -178,12 +219,17 @@ try {
   await pageNumber.press("Enter");
   await shown(dialog.getByRole("img", { name: "Tampilan halaman 10", exact: true }));
   assert.equal(await pageNumber.inputValue(), "10");
-  await pdfLayout.selectOption("single");
+  await pdfLayout.click();
+  await pdfLayout.press("Escape");
+  assert.equal(await pdfLayout.getAttribute("aria-expanded"), "false");
+  assert.equal(await dialog.isVisible(), true);
+  await choose(dialog, "Tata letak PDF", "Satu halaman");
   assert.equal(await readingArea.locator(".pdf-page").count(), 1);
   await button(dialog, "Halaman berikutnya").click();
   await shown(dialog.getByRole("img", { name: "Tampilan halaman 11", exact: true }));
-  await pdfLayout.selectOption("continuous");
+  await choose(dialog, "Tata letak PDF", "Gulir terus");
   assert.equal(await pageNumber.inputValue(), "11");
+  await button(dialog, "Daftar halaman").click();
   await button(dialog, "Buka halaman 12").click();
   await shown(dialog.getByRole("img", { name: "Tampilan halaman 12", exact: true }));
   assert.equal(await pageNumber.inputValue(), "12");
@@ -206,9 +252,10 @@ try {
   assert.equal(await pageNumber.inputValue(), "3");
   await close();
   await navigate("Dokumen");
-  const row = page.getByRole("listitem").filter({ hasText: "Contoh.pdf" });
+  const row = page.getByRole("row").filter({ hasText: "Contoh.pdf" });
+  await shown(page.getByRole("columnheader", { name: "Terakhir dibuka" }));
   await button(row, "Tandai berkas").click();
-  await button(page, "Ditandai").click();
+  await choose(page, "Tampilan dokumen", "Ditandai");
   await shown(row);
   await row.getByLabel("Tindakan untuk Contoh.pdf").click();
   await button(row, "Sematkan").click();
@@ -259,8 +306,8 @@ try {
 
   await openTool("Nomor halaman");
   await upload(pdfFile);
-  await dialog.getByLabel("Format penomoran").selectOption("page");
-  await dialog.getByLabel("Posisi nomor").selectOption("right");
+  await choose(dialog, "Format penomoran", "Halaman X");
+  await choose(dialog, "Posisi nomor", "Kanan bawah");
   await dialog.getByLabel("Lewati halaman sampul pertama").check();
   await processTool();
   const numbered = await capture(button(dialog, "Unduh"));
@@ -310,7 +357,7 @@ try {
 
   await navigate("Dokumen");
   await page.reload({ waitUntil: "load" });
-  const nativeRow = page.getByRole("listitem").filter({ hasText: nativeFile.name });
+  const nativeRow = page.getByRole("row").filter({ hasText: nativeFile.name });
   await shown(nativeRow.getByText(/Dokumen Terlindungi Depup/));
   await button(nativeRow, /^PDF-khusus\.pdf/).click();
   await shown(dialog.getByText(nativeMessage));
@@ -374,7 +421,7 @@ try {
   await button(page, "Sensur data").click();
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.getByLabel("Ekspor sebagai").selectOption("docx");
+  await choose(page, "Ekspor sebagai", "Word (DOCX)");
   await button(page, "Buat DOCX").click();
   await button(page, "Unduh").waitFor({ timeout: 120_000 });
   const scanWord = await Zip.loadAsync(await capture(button(page, "Unduh")));
@@ -383,7 +430,7 @@ try {
   assert.doesNotMatch(scanText, /Depup Office/i);
 
   await button(page, "Putar halaman").click();
-  await page.getByLabel("Isi Word").selectOption("photo");
+  await choose(page, "Isi Word", "Foto per halaman");
   await button(page, "Buat DOCX").click();
   const photoWord = await Zip.loadAsync(await capture(button(page, "Unduh")));
   const photo = Object.values(photoWord.files).find((entry) => /^word\/media\/.+\.jpg$/.test(entry.name));
@@ -437,7 +484,7 @@ try {
   await shown(stamp);
   await stamp.press("ArrowLeft");
   assert.equal(await dialog.getByLabel("Posisi dari kiri (%)").inputValue(), "63");
-  await dialog.getByLabel("Warna tanda tangan").selectOption("#1754b4");
+  await choose(dialog, "Warna tanda tangan", "Biru");
   await shown(stamp);
   await processTool();
   const signed = await capture(button(dialog, "Unduh"));
@@ -472,7 +519,7 @@ try {
   await dialog.getByLabel("Teks atau tautan").fill("Depup QR pengujian");
   await button(dialog, "Buat kode QR").click();
   const qr = await capture(button(dialog, "Unduh"));
-  await button(dialog, "Pindai foto").click();
+  await choose(dialog, "Mode QR", "Pindai foto");
   await upload({ name: "QR.png", mimeType: "image/png", buffer: qr });
   await button(dialog, "Pindai kode").click();
   await shown(dialog.getByText("Depup QR pengujian", { exact: true }));
@@ -601,7 +648,7 @@ try {
     await context.setOffline(true);
     await page.reload({ waitUntil: "load" });
     await navigate("Dokumen");
-    await shown(page.getByRole("listitem").filter({ hasText: "Contoh.pdf" }));
+    await shown(page.getByRole("row").filter({ hasText: "Contoh.pdf" }));
     await navigate("Scan");
     await shown(button(page, "Aktifkan kamera"));
     await page.getByRole("link", { name: "Halaman DepUp Office" }).click();

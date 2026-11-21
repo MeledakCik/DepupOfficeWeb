@@ -8,7 +8,7 @@ const legacySections = new Set(["#beranda", "#dokumen", "#scan", "#alat", "#saya
 export function LegacyWorkspaceLink() {
   useEffect(() => {
     const { hash } = window.location;
-    if (legacySections.has(hash)) {
+    if (window.location.pathname === "/" && legacySections.has(hash)) {
       window.location.replace("/office/" + hash);
       return;
     }

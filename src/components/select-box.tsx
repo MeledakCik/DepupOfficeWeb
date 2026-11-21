@@ -3,7 +3,7 @@
 import { Check, ChevronDown } from "lucide-react";
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 
-export function SelectBox<T extends string | number>({ label, value, options, onChange, placeholder = "Pilih…", disabled, className = "" }: {
+type SelectProps<T> = {
   label: string;
   value: T;
   options: readonly (readonly [T, string])[];
@@ -11,7 +11,13 @@ export function SelectBox<T extends string | number>({ label, value, options, on
   placeholder?: string;
   disabled?: boolean;
   className?: string;
-}) {
+};
+
+export function SelectField<T extends string | number>(props: SelectProps<T>) {
+  return <div className="field-label"><span>{props.label}</span><SelectBox {...props} /></div>;
+}
+
+export function SelectBox<T extends string | number>({ label, value, options, onChange, placeholder = "Pilih…", disabled, className = "" }: SelectProps<T>) {
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -24,7 +30,8 @@ export function SelectBox<T extends string | number>({ label, value, options, on
     const button = trigger.current;
     const list = menu.current;
     if (!open || !button || !list) return;
-    list.showPopover?.();
+    if (list.showPopover) list.showPopover();
+    else list.removeAttribute("popover");
     let frame = 0;
     function position() {
       if (!button || !list) return;
@@ -59,6 +66,7 @@ export function SelectBox<T extends string | number>({ label, value, options, on
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
       document.removeEventListener("pointerdown", dismiss, true);
+      if (list.isConnected && list.hidePopover) list.hidePopover();
     };
   }, [open]);
 

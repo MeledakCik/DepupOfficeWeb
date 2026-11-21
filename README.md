@@ -1,6 +1,6 @@
 # Depup Office Web
 
-DepUp Office Web memakai palet ungu, Lime Pop, dan Midnight serta tipografi Inter Tight dari panduan brand DepUp. Halaman pengenalan tersedia di `/` dan ruang kerja di `/office/`. Navigasi ruang kerja berada di sisi kiri pada desktop dan di bilah bawah pada ponsel. Pengguna dapat mengatur tema, transparansi navigasi dan animasi melalui **Saya → Tampilan**.
+DepUp Office memakai logo biru DepUp Office dan tipografi Inter Tight. Halaman pengenalan tersedia dalam bahasa Indonesia di `/` dan bahasa Inggris di `/en/`. Ruang kerja di `/office/` memakai bahasa Indonesia. Desktop mulai lebar 960 px memakai navigasi samping dan dashboard dua kolom. Layar yang lebih kecil memakai bilah navigasi bawah dengan tombol Scan di tengah. Buka **Saya → Tampilan** untuk mengatur tema, kaca, blur, ukuran antarmuka, dan animasi.
 
 ## Menjalankan
 
@@ -15,6 +15,12 @@ Buka [localhost:3000](http://localhost:3000). Untuk memeriksa hasil produksi di 
     npm start
 
 Build statis berada di folder `out`. Gunakan hosting HTTPS di root domain agar kamera, enkripsi browser, dan mode offline dapat berfungsi. Next.js menyajikan aplikasi tanpa server pemrosesan dokumen. [Panduan static export Next.js](https://nextjs.org/docs/app/guides/static-exports)
+
+## Rilis dan indeks pencarian
+
+Setel `SITE_URL` ke origin HTTPS yang akan dipakai publik sebelum menjalankan `npm run build`. Variabel ini menentukan alamat kanonis, Open Graph, `hreflang`, dan entri `sitemap.xml`. Build pengembangan dan pratinjau dengan `SITE_URL` kosong memakai `noindex`. Halaman fitur dan beranda tersedia di indeks untuk bahasa Indonesia (`id-ID`) dan Inggris (`en`). Sitemap memuat keduanya, dengan halaman Inggris sebagai `x-default`. Ruang kerja selalu memakai `noindex`.
+
+Publikasikan isi `out/` di root origin tersebut. Setelah domain aktif, periksa `robots.txt`, `sitemap.xml`, dan halaman kedua bahasa dari luar jaringan lokal, lalu daftarkan sitemap di Google Search Console. [Panduan Google untuk situs multibahasa](https://developers.google.com/search/docs/specialty/international/localized-versions)
 
 ## Fitur
 
@@ -49,7 +55,10 @@ Editor, pembaca PDF, pemroses gambar, dan OCR dimuat saat digunakan. Mesin OCR d
     npm run typecheck
     npm run build
     npm test
+    npm run test:seo
 
 Uji browser memakai Chrome lokal. Server harus aktif sebelum menjalankan `npm test`. Setel `BASE_URL` untuk port lain dan `TEST_OFFLINE=1` untuk memeriksa build produksi tanpa jaringan.
+
+Uji SEO memeriksa build pratinjau saat `SITE_URL` kosong. Gunakan nilai `SITE_URL` yang sama dengan build untuk menguji metadata dan sitemap produksi. `BASE_URL` tetap menunjuk ke server yang sedang diuji.
 
 Untuk memeriksa tampilan dan persistensi berkas pada WebKit dengan profil iPhone, jalankan `npx playwright install webkit` dan `npm run test:webkit`. Uji ini membuat PDF sendiri. Setel `BRAND_PDF` untuk mencoba PDF lokal lain.

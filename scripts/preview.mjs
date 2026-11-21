@@ -6,16 +6,17 @@ const root = resolve("out");
 if (!existsSync(resolve(root, "index.html"))) throw new Error("Jalankan npm run build sebelum npm start.");
 const port = Number(process.env.PORT ?? 3000);
 const types = {
-  ".html": "text/html; charset=utf-8", ".txt": "text/plain; charset=utf-8", ".json": "application/json",
+  ".html": "text/html; charset=utf-8", ".txt": "text/plain; charset=utf-8", ".json": "application/json", ".xml": "application/xml; charset=utf-8",
   ".css": "text/css", ".js": "text/javascript", ".mjs": "text/javascript", ".webmanifest": "application/manifest+json",
-  ".png": "image/png", ".webp": "image/webp", ".wasm": "application/wasm", ".ttf": "font/ttf", ".woff2": "font/woff2", ".gz": "application/gzip",
+  ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".wasm": "application/wasm", ".ttf": "font/ttf", ".woff2": "font/woff2", ".gz": "application/gzip",
 };
 createServer((request, response) => {
   try {
-    const pathname = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
+    const url = new URL(request.url, "http://localhost");
+    const pathname = decodeURIComponent(url.pathname);
     const file = resolve(root, "." + (pathname.endsWith("/") ? pathname + "index.html" : pathname));
-    if (pathname === "/office") {
-      response.writeHead(308, { Location: "/office/" + new URL(request.url, "http://localhost").search }).end();
+    if (!pathname.endsWith("/") && file.startsWith(root + sep) && existsSync(resolve(file, "index.html"))) {
+      response.writeHead(308, { Location: url.pathname + "/" + url.search }).end();
       return;
     }
     if (!file.startsWith(root + sep) || !existsSync(file) || !statSync(file).isFile()) {

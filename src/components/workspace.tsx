@@ -3,12 +3,13 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import {
-  ArrowDownToLine, ArrowUpRight, Camera, ChevronRight, CircleHelp, Clock3, Folder, FolderOpen,
-  LockKeyhole, MoreHorizontal, Paperclip, Pin, Plus, Search, ShieldCheck, Star, Sun, Moon, Upload, X,
+  ArrowDownToLine, ArrowLeft, ArrowUpRight, Camera, ChevronRight, Clock3, Folder, FolderOpen,
+  LockKeyhole, MoreHorizontal, Paperclip, Pin, Plus, Search, Star, Sun, Moon, Upload, X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { extension, getKind, kinds, navigation, templates, toolGroups, tools, type Kind, type Section, type Tool } from "@/lib/catalog";
 import { isDepupProtectedDocument, protectedDocumentTitle } from "@/lib/protected-document";
+import { applyAppearance, preferencesKey } from "@/lib/appearance";
 import {
   defaults, deleteDocument, download, formatSize, listDocuments, makeDocument, openStoredDocument, readDocument, readSearchIndex,
   shareFile, updateDocument, writeDocument, writeSearchIndex, type DocumentRecord, type Output, type StoredDocument,
@@ -16,37 +17,40 @@ import {
 import { Modal, ScanArtwork } from "./ui";
 import { Settings } from "./settings";
 import ProtectedDocumentNotice from "./protected-document-notice";
+import { SelectBox } from "./select-box";
 
 const ToolPanel = dynamic(() => import("./tool-panel"), { ssr: false, loading: () => <p role="status">Memuat alat…</p> });
 const Editor = dynamic(() => import("./editor"), { ssr: false, loading: () => <p role="status">Memuat editor…</p> });
 const Scanner = dynamic(() => import("./scanner"), { ssr: false, loading: () => <p role="status">Memuat pemindai…</p> });
-const tabs = ["Terkini", "Ditandai", "Hasil olahan"] as const;
-type DocumentTab = typeof tabs[number];
+const documentViews = ["Terkini", "Ditandai", "Hasil olahan"] as const;
+type DocumentView = typeof documentViews[number];
 type DialogState =
   | { mode: "tool"; tool: Tool; files?: File[] }
   | { mode: "editor"; document?: StoredDocument; kind: Kind; template?: string }
   | { mode: "protected"; name: string; data: Blob }
   | { mode: "rename" | "delete"; record: DocumentRecord }
-  | { mode: "new" | "privacy" | "quick"; files?: File[] };
+  | { mode: "privacy" | "quick"; files?: File[] };
 
 const createActions = [
   { kind: "word", title: "Dokumen Word", description: "Menulis dan memformat dokumen", icon: kinds.word.icon },
   { kind: "excel", title: "Spreadsheet", description: "Mengolah tabel dan rumus", icon: kinds.excel.icon },
   { kind: "note", title: "Catatan jadi PDF", description: "Menulis catatan singkat", icon: kinds.pdf.icon },
 ] as const;
-const homeTools = ["invoice", "catalog", "planner", "summary", "sign"].flatMap((id) => tools.filter((tool) => tool.id === id));
-const quickFormats = [
-  ["pdf", ".pdf"], ["word", ".docx, .txt"], ["excel", ".xlsx, .csv"],
-  ["slides", ".pptx"], ["image", ".jpg, .png"], ["other", "Semua format"],
-] as const;
+const quickFormats = ["pdf", "word", "excel", "other"] as const;
+const documentKinds: [Kind | "all", string][] = [
+  ["all", "Semua jenis"],
+  ...(Object.keys(kinds) as Kind[]).map((key): [Kind, string] => [key, kinds[key].label]),
+];
 const catalogGroups = toolGroups.map(({ title, items }) => ({
   title,
   entries: tools.filter((tool) => items.some(([id]) => id === tool.id)),
 }));
 const historyKey = "depup-recent-searches";
+const openedDate = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" });
 
 function sectionFromHash(): Section {
-  return navigation.find((section) => section.id === window.location.hash.slice(1))?.id ?? "beranda";
+  const [id] = window.location.hash.slice(1).split("/");
+  return navigation.find((section) => section.id === id)?.id ?? "beranda";
 }
 
 export default function Workspace() {
@@ -55,7 +59,7 @@ export default function Workspace() {
   const [ready, setReady] = useState(false);
   const [preferences, setPreferences] = useState(defaults);
   const [dialog, setDialog] = useState<DialogState>();
-  const [tab, setTab] = useState<DocumentTab>("Terkini");
+  const [documentView, setDocumentView] = useState<DocumentView>("Terkini");
   const [kindFilter, setKindFilter] = useState<Kind | "all">("all");
   const [query, setQuery] = useState("");
   const [contentMatches, setContentMatches] = useState<Record<string, string>>();
@@ -69,6 +73,8 @@ export default function Workspace() {
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
+  const focusSearch = useRef(false);
+  const scanReturn = useRef<Exclude<Section, "scan">>("beranda");
   const folderInput = useRef<HTMLInputElement>(null);
   const searchRun = useRef(0);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -82,14 +88,23 @@ export default function Workspace() {
   const refresh = useCallback(async () => setDocuments(await listDocuments()), []);
 
   useEffect(() => {
-    function sync() { setSection(sectionFromHash()); }
+    function sync() {
+      const section = sectionFromHash();
+      setSection(section);
+      if (section !== "alat") return;
+      const [, id] = window.location.hash.slice(1).split("/");
+      const tool = tools.find((entry) => entry.id === id);
+      if (!tool) return;
+      window.history.replaceState(null, "", "#alat");
+      setDialog({ mode: "tool", tool });
+    }
     window.addEventListener("hashchange", sync);
     window.addEventListener("popstate", sync);
     queueMicrotask(() => {
       sync();
       setNow(new Date());
       try {
-        const saved = localStorage.getItem("depup-preferences");
+        const saved = localStorage.getItem(preferencesKey);
         if (saved) setPreferences({ ...defaults, ...JSON.parse(saved) });
         const history: unknown = JSON.parse(localStorage.getItem(historyKey) ?? "[]");
         if (Array.isArray(history)) setRecentSearches(history.filter((item): item is string => typeof item === "string").slice(0, 6));
@@ -100,7 +115,13 @@ export default function Workspace() {
     function shortcut(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k" && !document.querySelector("dialog[open]")) {
         event.preventDefault();
-        searchInput.current?.focus();
+        if (searchInput.current) searchInput.current.focus();
+        else {
+          focusSearch.current = true;
+          window.history.pushState(null, "", "#dokumen");
+          setSection("dokumen");
+          window.scrollTo(0, 0);
+        }
       }
     }
     window.addEventListener("keydown", shortcut);
@@ -113,12 +134,15 @@ export default function Workspace() {
   }, [notify]);
 
   useEffect(() => {
+    if (!focusSearch.current || section !== "dokumen") return;
+    searchInput.current?.focus();
+    focusSearch.current = false;
+  }, [section]);
+
+  useEffect(() => {
     if (!ready) return;
-    Object.assign(document.documentElement.dataset, {
-      theme: preferences.theme, blur: String(preferences.blur), font: preferences.fontScale,
-      glass: String(preferences.glass), dispersion: String(preferences.dispersion), motion: String(preferences.motion),
-    });
-    try { localStorage.setItem("depup-preferences", JSON.stringify(preferences)); } catch { /* Session preferences remain usable. */ }
+    applyAppearance(preferences);
+    try { localStorage.setItem(preferencesKey, JSON.stringify(preferences)); } catch { /* Session preferences remain usable. */ }
   }, [preferences, ready]);
 
   useEffect(() => {
@@ -130,13 +154,14 @@ export default function Workspace() {
   }, []);
 
   function navigate(next: Section) {
+    if (next === "scan" && section !== "scan") scanReturn.current = section;
     setSection(next);
     if (sectionFromHash() !== next) window.history.pushState(null, "", "#" + next);
     window.scrollTo({ top: 0, behavior: "instant" });
   }
 
-  function gotoDocuments(next: DocumentTab = "Terkini") {
-    setTab(next);
+  function gotoDocuments(next: DocumentView = "Terkini") {
+    setDocumentView(next);
     setKindFilter("all");
     navigate("dokumen");
   }
@@ -294,16 +319,22 @@ export default function Workspace() {
       <span className="empty-icon"><FolderOpen size={23} /></span><strong>{emptyHeading}</strong><p>{emptyBody}</p>
       {importAction && <button className="text-button" onClick={() => chooseFiles()}><Plus size={16} /> Buka berkas</button>}
     </div>;
-    return <ul className="file-list">{items.map((item) => {
+    return <table className="file-list" aria-label={section === "beranda" ? "Berkas di beranda" : "Daftar dokumen"}>
+      <thead><tr><th scope="col">Nama berkas</th><th scope="col" className="file-date">Terakhir dibuka</th><th scope="col" className="file-size">Ukuran</th><th scope="col" className="file-actions"><span className="sr-only">Tindakan</span></th></tr></thead>
+      <tbody>{items.map((item) => {
       const Icon = item.depupProtected ? LockKeyhole : kinds[item.kind].icon;
-      return <li key={item.id}>
+      const size = formatSize(item.size);
+      return <tr key={item.id}><td>
         <button className="file-main" onClick={() => void openDocument(item)}>
           <span className={`badge ${item.kind}`}><Icon size={20} /></span>
           <span className="file-text">
-            <strong>{item.name}</strong><small>{item.depupProtected ? protectedDocumentTitle : (extension(item.name) || kinds[item.kind].label).toUpperCase()} · {formatSize(item.size)}{item.pinned && " · Disematkan"}</small>
+            <strong>{item.name}</strong><small>{item.depupProtected ? protectedDocumentTitle : (extension(item.name) || kinds[item.kind].label).toUpperCase()}<span className="inline-size"> · {size}</span>{item.pinned && " · Disematkan"}</small>
             {contentMatches?.[item.id] && <small className="search-snippet">{contentMatches[item.id]}</small>}
           </span>
-        </button>
+        </button></td>
+        <td className="file-date">{Number.isFinite(item.opened) ? openedDate.format(item.opened) : "Belum tercatat"}</td>
+        <td className="file-size">{size}</td>
+        <td className="file-actions"><div className="file-actions-inner">
         <button className="icon-button file-star" aria-label={item.starred ? "Hapus tanda" : "Tandai berkas"} aria-pressed={!!item.starred} onClick={() => void update(item, { starred: !item.starred })}><Star size={18} fill={item.starred ? "currentColor" : "none"} /></button>
         <details className="file-menu"><summary className="icon-button" aria-label={`Tindakan untuk ${item.name}`}><MoreHorizontal size={20} /></summary>
           <div onClick={(event) => event.currentTarget.closest("details")?.removeAttribute("open")}>
@@ -319,32 +350,23 @@ export default function Workspace() {
             <button onClick={() => void fileAction(item, "share")}>Bagikan</button>
             <button className="danger-text" onClick={() => setDialog({ mode: "delete", record: item })}>Hapus</button>
           </div>
-        </details>
-      </li>;
-    })}</ul>;
-  }
-
-  function createList() {
-    return <div className="create-list">{createActions.map(({ kind, title, description, icon: Icon }) => <button key={kind} onClick={() => create(kind)}>
-      <span className={`badge ${kind}`}><Icon size={19} /></span><span><strong>{title}</strong><small>{description}</small></span><ChevronRight size={17} />
-    </button>)}{homeTools.map(({ id, label, description, icon: Icon, tone }) => <button key={id} onClick={() => launch(id)}>
-      <span className={`badge ${tone}`}><Icon size={19} /></span><span><strong>{label}</strong><small>{description}</small></span><ChevronRight size={17} />
-    </button>)}</div>;
+        </details></div></td>
+      </tr>;
+    })}</tbody></table>;
   }
 
   const outputs = documents.filter((document) => document.source === "output");
   const outputCount = outputs.length;
   const latestOutput = outputs.reduce<DocumentRecord | undefined>((latest, item) => !latest || item.saved > latest.saved ? item : latest, undefined);
-  const pinned = documents.filter((document) => document.pinned);
-  const visible = documents.filter((document) => {
-    const search = query.trim().toLocaleLowerCase("id");
-    return (tab !== "Ditandai" || document.starred) && (tab !== "Hasil olahan" || document.source === "output")
+  const pinned = section === "beranda" ? documents.filter((document) => document.pinned) : [];
+  const search = query.trim().toLocaleLowerCase("id");
+  const visible = section === "dokumen" ? documents.filter((document) => {
+    return (documentView !== "Ditandai" || document.starred) && (documentView !== "Hasil olahan" || document.source === "output")
       && (kindFilter === "all" || kindFilter === document.kind)
       && (!search || document.name.toLocaleLowerCase("id").includes(search) || !!contentMatches?.[document.id]);
-  });
+  }) : [];
   const hour = now?.getHours() ?? 12;
   const greeting = hour < 11 ? "pagi" : hour < 15 ? "siang" : hour < 19 ? "sore" : "malam";
-  const current = navigation.find((item) => item.id === section);
   const displayDate = now?.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const toolSearch = toolQuery.toLocaleLowerCase("id").trim();
   const filteredGroups = section === "alat" ? catalogGroups
@@ -352,6 +374,18 @@ export default function Workspace() {
     .map(({ title, entries }) => ({ title, entries: !toolSearch ? entries : entries.filter(({ label, description }) =>
       `${label} ${description} ${title}`.toLocaleLowerCase("id").includes(toolSearch)) }))
     .filter(({ entries }) => entries.length) : [];
+  const documentSearch = <form className="search document-search" onSubmit={(event) => {
+    event.preventDefault();
+    if (section !== "dokumen") gotoDocuments();
+    void searchContent();
+  }}>
+    <Search size={19} /><input ref={searchInput} aria-label="Cari dokumen" placeholder="Cari dokumen…" value={query} onChange={(event) => changeQuery(event.target.value)} />
+    {query ? <button type="button" className="clear-search" aria-label="Bersihkan pencarian" onClick={() => { changeQuery(""); searchInput.current?.focus(); }}><X size={16} /></button> : <kbd>Ctrl K</kbd>}
+    {section === "dokumen" && query.trim() && <button className="button secondary" disabled={contentBusy}>{contentBusy ? "Mencari…" : "Cari dalam isi"}</button>}
+  </form>;
+
+  const currentSection = navigation.find(({ id }) => id === section)!;
+  const brand = <button className="brand" onClick={() => navigate("beranda")} aria-label="Depup Office, beranda"><Image src="/brand/depup-office-192.png" width={33} height={33} alt="" unoptimized /><span>DepUp <b>Office</b></span></button>;
 
   return <div className="workspace" onDragEnter={(event) => {
     if (!event.dataTransfer.types.includes("Files") || dialog || (section !== "beranda" && section !== "dokumen")) return;
@@ -364,32 +398,19 @@ export default function Workspace() {
     void importFiles(Array.from(event.dataTransfer.files));
   }}>
     <a className="skip-link" href="#konten" onClick={(event) => { event.preventDefault(); document.getElementById("konten")?.focus(); }}>Lewati ke konten</a>
-    <aside className="sidebar">
-      <button className="brand" onClick={() => navigate("beranda")} aria-label="Depup Office, beranda">
-        <Image src="/brand/depup-mark.png" width={36} height={36} alt="" unoptimized />
-        <span>DepUp <b>Office</b></span>
-      </button>
+    <div className="workspace-rail">
+      {brand}
       <nav className="main-nav" aria-label="Navigasi utama">{navigation.map(({ id, label, icon: Icon }) => <button key={id}
-        className={id === section ? "active" : ""} onClick={() => navigate(id)} aria-current={id === section ? "page" : undefined}>
-        <Icon size={20} strokeWidth={1.9} /><span>{label}</span></button>)}</nav>
-      <div className="sidebar-bottom">
-        <button className="aside-link" onClick={() => setDialog({ mode: "privacy" })}><CircleHelp size={19} /> Bantuan & privasi</button>
-        <div className="local-status"><span className="local-icon"><ShieldCheck size={17} /></span><span><strong>Penyimpanan lokal</strong><small>Berkas di browser ini</small></span></div>
-      </div>
-    </aside>
-
-    <div className="app-main">
+        className={id === "scan" ? "scan-action" : undefined} onClick={() => navigate(id)} aria-label={label} title={label}
+        aria-current={id === section ? "page" : undefined}>
+        <Icon size={21} strokeWidth={2} aria-hidden="true" /><span className="nav-label">{label}</span>
+      </button>)}</nav>
+      <button className="rail-privacy" onClick={() => setDialog({ mode: "privacy" })}><LockKeyhole size={17} /> Bantuan &amp; privasi</button>
+    </div>
       <header className="topbar">
-        <button className="brand mobile-brand" onClick={() => navigate("beranda")} aria-label="Depup Office, beranda"><Image src="/brand/depup-mark.png" width={33} height={33} alt="" unoptimized /><span>DepUp <b>Office</b></span></button>
-        <div className="breadcrumb"><span>Ruang kerja</span><ChevronRight size={15} /><strong>{current?.label}</strong></div>
-        <form className="search" onSubmit={(event) => {
-          event.preventDefault();
-          if (section !== "dokumen") gotoDocuments();
-          void searchContent();
-        }}>
-          <Search size={18} /><input ref={searchInput} aria-label="Cari dokumen" placeholder="Cari dokumen…" value={query} onChange={(event) => changeQuery(event.target.value)} />
-          {query ? <button type="button" className="clear-search" aria-label="Bersihkan pencarian" onClick={() => { changeQuery(""); searchInput.current?.focus(); }}><X size={15} /></button> : <kbd>Ctrl K</kbd>}
-        </form>
+        {section === "scan" && <button className="icon-button" aria-label="Kembali dari Scan" onClick={() => navigate(scanReturn.current)}><ArrowLeft size={20} /></button>}
+        {brand}
+        <div className="workspace-location"><span>Ruang kerja</span><ChevronRight size={14} /><strong>{currentSection.label}</strong></div>
         <button className="icon-button theme-button" title="Ganti tema" aria-label="Ganti tema" onClick={() => {
           const dark = preferences.theme === "dark" || (preferences.theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
           setPreferences({ ...preferences, theme: dark ? "light" : "dark" });
@@ -397,37 +418,44 @@ export default function Workspace() {
         <button className="button primary top-action" aria-label="Buka berkas" onClick={() => chooseFiles()}><Upload size={17} /><span>Buka berkas</span></button>
       </header>
       <main className="content" id="konten" tabIndex={-1}>
-        <div className="workspace-view" key={section}>
+        <div className={section === "beranda" ? "workspace-view dashboard" : "workspace-view"} key={section}>
         {section === "beranda" && <>
-          <div className="intro"><div><p className="date"><Clock3 size={15} />{displayDate || "Ruang kerja Anda"}</p><h1>Selamat {greeting}<span>.</span></h1>
-            <p className="intro-sub">Siap mengerjakan dokumen apa hari ini?</p></div>
-            <button className="button secondary create-button" onClick={() => setDialog({ mode: "new" })}><Plus size={19} /> Buat baru</button></div>
+          <div className="dashboard-heading">
+          <div className="intro"><p className="date"><Clock3 size={15} />{displayDate || "Ruang kerja Anda"}</p><h1>Selamat {greeting}<span>.</span></h1></div>
+          {documentSearch}
+          </div>
+          <div className="dashboard-documents">
+          {pinned.length > 0 && <section className="home-section"><div className="section-head"><h2>Disematkan</h2></div><div className="panel">{documentList(pinned.slice(0, 4), "", "")}</div></section>}
+          <section className={documents.length ? "home-section" : "home-section desktop-recent-empty"} aria-labelledby="recent-heading"><div className="section-head"><h2 id="recent-heading">Baru dibuka</h2>
+            <button className="text-button" onClick={() => gotoDocuments()}>Lihat semua <ChevronRight size={16} /></button></div>
+            <div className="panel">{documentList(documents.slice(0, 4), "Belum ada berkas terbaru", "Jatuhkan dokumen ke ruang kerja atau pilih berkas dari perangkat.", true)}</div>
+          </section>
+          </div>
           <div className="overview">
             <section className="hero" aria-labelledby="scan-heading"><div className="hero-content">
-              <span className="hero-icon"><Camera size={21} /></span><h2 id="scan-heading">Scan dokumen</h2>
+              <h2 id="scan-heading">Scan dokumen</h2>
               <p>Ubah foto kertas menjadi PDF yang rapi, langsung dari kamera atau galeri.</p>
               <button className="button hero-button" onClick={() => navigate("scan")}><Camera size={17} /> Mulai Scan</button>
             </div><ScanArtwork /></section>
             <div className="stats">
-              <button className="stat" onClick={() => gotoDocuments()}><span className="stat-icon"><Folder size={19} /></span><ArrowUpRight className="stat-arrow" size={16} /><strong>{documents.length}</strong><span>Berkas tersimpan</span></button>
-              <button className="stat result-stat" onClick={() => gotoDocuments("Hasil olahan")}><span className="stat-icon"><ArrowDownToLine size={20} /></span><ArrowUpRight className="stat-arrow" size={16} /><strong>{outputCount}</strong><span>Hasil dibuat</span></button>
+              <button className="stat" onClick={() => gotoDocuments()}><span className="stat-icon"><Folder size={19} /></span><strong>{documents.length}</strong><span>Berkas terbaru</span></button>
+              <button className="stat result-stat" onClick={() => gotoDocuments("Hasil olahan")}><span className="stat-icon"><ArrowDownToLine size={20} /></span><strong>{outputCount}</strong><span>Hasil dibuat</span></button>
             </div>
           </div>
-          <section className="home-section" aria-labelledby="quick-heading"><div className="section-head"><h2 id="quick-heading">Buka berkas</h2></div>
-            <div className="quick-grid">{quickFormats.map(([key, formats]) => {
+          <section className="home-section dashboard-formats" aria-labelledby="quick-heading"><div className="section-head"><h2 id="quick-heading">Buka berkas</h2></div>
+            <div className="quick-grid">{quickFormats.map((key) => {
               const { icon: Icon, label, accept } = kinds[key];
-              return <button key={key} className="quick-card" onClick={() => chooseFiles(accept, false)}><span className={`badge ${key}`}><Icon size={21} /></span>
-                <span><strong>{label}</strong><small>{formats}</small></span><ChevronRight className="quick-arrow" size={17} /></button>;
+              return <button key={key} className="quick-card" onClick={() => chooseFiles(accept, false)}><span className={`badge ${key}`}><Icon size={23} /></span>
+                <strong>{label}</strong></button>;
             })}</div>
           </section>
-          {pinned.length > 0 && <section className="home-section"><div className="section-head"><h2>Disematkan</h2></div><div className="panel">{documentList(pinned.slice(0, 4), "", "")}</div></section>}
-          <div className="home-columns">
-            <section className="home-section" aria-labelledby="recent-heading"><div className="section-head"><h2 id="recent-heading">Dokumen terbaru</h2>
-              <button className="text-button" onClick={() => gotoDocuments()}>Lihat semua <ChevronRight size={16} /></button></div>
-              <div className="panel recent-panel">{documentList(documents.slice(0, 4), "Belum ada dokumen", "Buka atau jatuhkan berkas ke ruang kerja.", true)}</div></section>
-            <section className="home-section" aria-labelledby="create-heading"><div className="section-head"><h2 id="create-heading">Buat baru</h2></div><div className="panel">{createList()}</div></section>
-          </div>
-          <section className="home-section" aria-labelledby="templates-heading"><div className="section-head"><h2 id="templates-heading">Template siap pakai</h2></div>
+          <section className="home-section dashboard-create" aria-labelledby="create-heading"><div className="section-head"><h2 id="create-heading">Buat baru</h2></div>
+            <div className="panel create-list">{createActions.map(({ kind, title, description, icon: Icon }) =>
+              <button key={kind} className={`create-card create-${kind}`} onClick={() => create(kind)}>
+                <span className={`badge ${kind}`}><Icon size={21} /></span><span><strong>{title}</strong><small>{description}</small></span><Plus size={16} aria-hidden="true" />
+              </button>)}</div>
+          </section>
+          <section className="home-section dashboard-templates" aria-labelledby="templates-heading"><div className="section-head"><h2 id="templates-heading">Template siap pakai</h2></div>
             <div className="template-grid">{templates.map(([id, title, description, kind]) => {
               const Icon = kinds[kind].icon;
               return <button className="template" key={id} onClick={() => setDialog({ mode: "editor", kind, template: id })}><span className={`badge ${kind}`}><Icon size={19} /></span><strong>{title}</strong><small>{description}</small></button>;
@@ -436,6 +464,7 @@ export default function Workspace() {
         {section === "dokumen" && <>
           <div className="page-heading"><div><h1>Dokumen</h1><p>Kelola berkas yang tersimpan di ruang kerja Anda.</p></div>
             <button className="button secondary" onClick={() => folderInput.current?.click()}><FolderOpen size={18} /> Impor folder</button></div>
+          {documentSearch}
           {!query.trim() && recentSearches.length > 0 && <section className="search-history" aria-label="Pencarian terakhir">
             <div className="section-head"><h2>Pencarian terakhir</h2>
               <button className="text-button" aria-label="Hapus riwayat pencarian" onClick={() => saveSearchHistory([])}>Hapus riwayat</button></div>
@@ -443,24 +472,22 @@ export default function Workspace() {
               changeQuery(entry); void searchContent(entry);
             }}><Clock3 size={14} /> {entry}</button>)}</div>
           </section>}
-          <div className="section-head document-controls"><div className="segmented" aria-label="Tampilan dokumen">
-            {tabs.map((entry) => <button key={entry} aria-pressed={tab === entry} onClick={() => setTab(entry)}>{entry}</button>)}
-          </div>{query && <button className="button secondary" onClick={() => void searchContent()} disabled={contentBusy}><Search size={16} />{contentBusy ? "Mencari…" : "Cari dalam isi"}</button>}</div>
-          <div className="chips" aria-label="Jenis berkas"><button onClick={() => setKindFilter("all")} aria-pressed={kindFilter === "all"}>Semua jenis</button>
-            {(Object.keys(kinds) as Kind[]).map((key) => <button key={key} onClick={() => setKindFilter(key)} aria-pressed={kindFilter === key}>{kinds[key].label}</button>)}</div>
-          <div className="panel">{documentList(visible, query || tab !== "Terkini" || kindFilter !== "all" ? "Tidak ada berkas yang sesuai" : "Belum ada dokumen",
-            query ? "Coba kata kunci lain atau cari dalam isi berkas." : "Berkas yang dibuka atau dibuat akan muncul di sini.", !query && tab === "Terkini")}</div>
+          <div className="document-controls" role="group" aria-label="Filter dokumen">
+            <SelectBox label="Tampilan dokumen" value={documentView} options={documentViews.map((view) => [view, view])} onChange={setDocumentView} />
+            <SelectBox label="Jenis berkas" value={kindFilter} options={documentKinds} onChange={setKindFilter} />
+          </div>
+          <div className="panel">{documentList(visible, query || documentView !== "Terkini" || kindFilter !== "all" ? "Tidak ada berkas yang sesuai" : "Belum ada dokumen",
+            query ? "Coba kata kunci lain atau cari dalam isi berkas." : "Berkas yang dibuka atau dibuat akan muncul di sini.", !query && documentView === "Terkini")}</div>
         </>}
         {section === "scan" && <><div className="page-heading"><div><h1>Scan dokumen</h1><p>Ambil foto, rapikan halaman, lalu simpan hasilnya.</p></div></div><Scanner save={persist} preferences={preferences} /></>}
         {section === "alat" && <>
           <div className="page-heading"><div><h1>Alat</h1><p>Kelola, konversi, dan lindungi berkas di browser.</p></div>
             <button className="button secondary" onClick={() => setDialog({ mode: "quick" })}><Paperclip size={17} /> Pilih berkas dulu</button></div>
-          <div className="search tool-search"><Search size={18} /><input aria-label="Cari alat" placeholder="Cari alat…" value={toolQuery} onChange={(event) => setToolQuery(event.target.value)} />
-            {toolQuery && <button className="clear-search" aria-label="Bersihkan pencarian alat" onClick={() => setToolQuery("")}><X size={15} /></button>}
-          </div>
-          <div className="chips tool-categories" role="group" aria-label="Kategori alat">
-            <button aria-pressed={!toolGroup} onClick={() => setToolGroup("")}>Semua alat</button>
-            {toolGroups.map(({ title }) => <button key={title} aria-pressed={toolGroup === title} onClick={() => setToolGroup(title)}>{title}</button>)}
+          <div className="tool-filters">
+            <div className="search tool-search"><Search size={18} /><input aria-label="Cari alat" placeholder="Cari alat…" value={toolQuery} onChange={(event) => setToolQuery(event.target.value)} />
+              {toolQuery && <button className="clear-search" aria-label="Bersihkan pencarian alat" onClick={() => setToolQuery("")}><X size={15} /></button>}
+            </div>
+            <SelectBox label="Kategori alat" value={toolGroup} options={[["", "Semua alat"], ...toolGroups.map(({ title }): [string, string] => [title, title])]} onChange={setToolGroup} />
           </div>
           {!toolQuery.trim() && latestOutput && <div className="last-output panel">
             <button className="file-main" onClick={() => void openDocument(latestOutput)}>
@@ -482,7 +509,6 @@ export default function Workspace() {
           <a href="/">Halaman DepUp Office <ArrowUpRight size={14} /></a>
         </footer>
       </main>
-    </div>
     <input ref={fileInput} className="sr-only" tabIndex={-1} type="file" aria-label="Impor berkas" onChange={handleImport} />
     <input ref={folderInput} className="sr-only" tabIndex={-1} type="file" multiple {...{ webkitdirectory: "" }} aria-label="Impor folder" onChange={(event) => handleImport(event, false)} />
     {dragging && <div className="drag-overlay"><Upload size={32} /> Jatuhkan berkas di sini</div>}
@@ -490,12 +516,11 @@ export default function Workspace() {
     {dialog && <Modal close={() => setDialog(undefined)} wide={dialog.mode === "editor" || (dialog.mode === "tool" && dialog.tool.id === "annotate")}
       reader={dialog.mode === "editor" && dialog.kind === "pdf"}
       title={dialog.mode === "tool" ? dialog.tool.label : dialog.mode === "editor" ? dialog.document?.name ?? (dialog.kind === "excel" ? "Spreadsheet" : "Dokumen Word") : ({
-        new: "Buat baru", rename: "Ubah nama", delete: "Hapus berkas", privacy: "Bantuan & privasi", quick: "Pilih berkas dulu", protected: protectedDocumentTitle,
+        rename: "Ubah nama", delete: "Hapus berkas", privacy: "Bantuan & privasi", quick: "Pilih berkas dulu", protected: protectedDocumentTitle,
       })[dialog.mode]}>
       {dialog.mode === "tool" && <ToolPanel key={dialog.tool.id} tool={dialog.tool} initialFiles={dialog.files} save={persist} preferences={preferences} notify={notify} />}
       {dialog.mode === "editor" && <Editor document={dialog.document} template={dialog.template} kind={dialog.kind} preferences={preferences} save={persist} launch={launch} />}
       {dialog.mode === "protected" && <ProtectedDocumentNotice name={dialog.name} data={dialog.data} />}
-      {dialog.mode === "new" && createList()}
       {dialog.mode === "privacy" && <div className="stack help">
         <p>Pilih <strong>Buka berkas</strong> atau jatuhkan dokumen ke Beranda. Gunakan <strong>Scan</strong> untuk foto dan <strong>Alat</strong> untuk konversi, penyuntingan PDF, serta ekspor.</p>
         <p>Berkas dan pengaturan tersimpan di browser ini. Ekspor salinan sebelum menghapus data situs. Berkas dalam Brankas memerlukan kata sandi yang Anda buat.</p>

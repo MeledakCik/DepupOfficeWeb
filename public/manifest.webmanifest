@@ -6,10 +6,10 @@
   "lang": "id",
   "start_url": "/office/",
   "display": "standalone",
-  "background_color": "#ede8ff",
-  "theme_color": "#1e1150",
+  "background_color": "#edf2ff",
+  "theme_color": "#0037ff",
   "icons": [
-    { "src": "/brand/depup-mark.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/brand/depup-mark-install.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/brand/depup-office-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/brand/depup-office-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }

@@ -6,6 +6,7 @@ import { baseName } from "@/lib/catalog";
 import { readWord, sanitizeHtml, writeWord } from "@/lib/office";
 import { wordTemplate } from "@/lib/templates";
 import { download, type Output, type Preferences, type StoredDocument } from "@/lib/workspace";
+import { SelectBox } from "./select-box";
 
 type EditorProps = { record?: StoredDocument; template?: string; preferences: Preferences; save: (output: Output) => Promise<unknown> };
 const actions = [
@@ -27,6 +28,8 @@ export default function WordEditor({ record, template, preferences, save }: Edit
   const [find, setFind] = useState("");
   const [replacement, setReplacement] = useState("");
   const [hasDraft, setHasDraft] = useState(false);
+  const [paragraph, setParagraph] = useState("p");
+  const [font, setFont] = useState("Arial");
   const stage = useRef<HTMLDivElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
   const selection = useRef<Range | null>(null);
@@ -163,8 +166,10 @@ export default function WordEditor({ record, template, preferences, save }: Edit
     {ready && <>
       <label>Nama dokumen<input value={name} onChange={(event) => setName(event.target.value)} /></label>
       <div className="editor-toolbar" aria-label="Pemformatan teks">
-        <select aria-label="Gaya paragraf" defaultValue="p" onChange={(event) => command("formatBlock", event.target.value)}><option value="p">Paragraf</option><option value="h1">Judul 1</option><option value="h2">Judul 2</option><option value="blockquote">Kutipan</option></select>
-        <select aria-label="Font teks" defaultValue="Arial" onChange={(event) => command("fontName", event.target.value)}><option>Arial</option><option>Georgia</option><option>Courier New</option></select>
+        <SelectBox label="Gaya paragraf" value={paragraph} options={[["p", "Paragraf"], ["h1", "Judul 1"], ["h2", "Judul 2"], ["blockquote", "Kutipan"]]}
+          onChange={(value) => { setParagraph(value); command("formatBlock", value); }} />
+        <SelectBox label="Font teks" value={font} options={[["Arial", "Arial"], ["Georgia", "Georgia"], ["Courier New", "Courier New"]]}
+          onChange={(value) => { setFont(value); command("fontName", value); }} />
         {actions.map(([action, label, Icon]) => <button type="button" aria-label={label} title={label} key={action} onMouseDown={(event) => event.preventDefault()} onClick={() => command(action)}><Icon size={17} /></button>)}
         <input type="color" defaultValue="#171717" aria-label="Warna teks" onChange={(event) => command("foreColor", event.target.value)} />
         <button title="Sisipkan tabel" aria-label="Sisipkan tabel" onMouseDown={(event) => event.preventDefault()} onClick={() => command("insertHTML", '<table><tbody><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr></tbody></table><p><br></p>')}><Table2 size={17} /></button>

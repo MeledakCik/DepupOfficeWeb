@@ -8,6 +8,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties,
 import type { PDFPageProxy } from "pdfjs-dist";
 import { download, type Preferences, type StoredDocument } from "@/lib/workspace";
 import { pdfCanvas, pdfPageText, readPdf } from "@/lib/pdf";
+import { SelectBox } from "./select-box";
 
 type Source = Awaited<ReturnType<typeof readPdf>>;
 type Launch = (id: string, files?: File[]) => void;
@@ -113,7 +114,7 @@ export default function PdfViewer({ record, preferences, launch }: { record: Sto
   const [zoom, setZoom] = useState(preferences.zoom);
   const [theme, setTheme] = useState(preferences.reader);
   const [layout, setLayout] = useState(preferences.pdfLayout);
-  const [pagesOpen, setPagesOpen] = useState(() => matchMedia("(min-width: 820px)").matches);
+  const [pagesOpen, setPagesOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [matches, setMatches] = useState<number[]>([]);
@@ -233,13 +234,11 @@ export default function PdfViewer({ record, preferences, launch }: { record: Sto
       <div className="pdf-ribbon-row">
         <button className="pdf-control" aria-expanded={pagesOpen} aria-controls="pdf-pages-panel" aria-label="Daftar halaman"
           onClick={() => { anchorPage.current = page; setPagesOpen(!pagesOpen); }}><PanelLeft size={18} /><span>Halaman</span></button>
-        <select aria-label="Tata letak PDF" value={layout} onChange={(event) => {
+        <SelectBox label="Tata letak PDF" value={layout} options={[["continuous", "Gulir terus"], ["single", "Satu halaman"]]} onChange={(value) => {
           anchorPage.current = page;
-          setLayout(event.target.value as Preferences["pdfLayout"]);
-        }}><option value="continuous">Gulir terus</option><option value="single">Satu halaman</option></select>
-        <select aria-label="Tema halaman" value={theme} onChange={(event) => setTheme(event.target.value as typeof theme)}>
-          <option value="natural">Normal</option><option value="warm">Hangat</option><option value="night">Malam</option>
-        </select>
+          setLayout(value);
+        }} />
+        <SelectBox label="Tema halaman" value={theme} onChange={setTheme} options={[["natural", "Normal"], ["warm", "Hangat"], ["night", "Malam"]]} />
         <div className="pdf-file-actions">
           {downloadButton}
           {reader.printable && <button className="pdf-control" aria-label="Cetak" onClick={() => launch("print", [file()])}><Printer size={17} /><span>Cetak</span></button>}

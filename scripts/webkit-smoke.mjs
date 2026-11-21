@@ -40,6 +40,10 @@ try {
   ]);
   await chooser.setFiles(file);
   await rendered();
+  const layout = dialog.getByRole("combobox", { name: "Tata letak PDF", exact: true });
+  await layout.tap();
+  await dialog.getByRole("option", { name: "Satu halaman", exact: true }).tap();
+  assert.match(await layout.innerText(), /Satu halaman/);
   await close();
   await nav.getByRole("button", { name: "Dokumen", exact: true }).click();
   await page.reload();

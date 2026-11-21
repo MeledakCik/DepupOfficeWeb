@@ -14,6 +14,7 @@ import Annotator from "./annotator";
 import dynamic from "next/dynamic";
 import { LocalImage } from "./media";
 import ProtectedDocumentNotice from "./protected-document-notice";
+import { SelectField } from "./select-box";
 
 const PdfOrganizer = dynamic(() => import("./pdf-organizer"), { ssr: false, loading: () => <p role="status">Memuat penyusun PDF…</p> });
 const SignaturePreview = dynamic(() => import("./signature-preview"), { ssr: false, loading: () => <p role="status">Memuat pratinjau…</p> });
@@ -61,9 +62,8 @@ const fields: Record<string, Field[]> = {
 function ToolField({ field, value, change }: { field: Field; value: string | boolean | undefined; change: (value: string | boolean) => void }) {
   const { label, type, choices, placeholder, required, min, max } = field;
   if (type === "checkbox") return <label className="check-label"><input type="checkbox" checked={Boolean(value)} onChange={(event) => change(event.target.checked)} />{label}</label>;
-  return <label>{label}{choices ? <select value={String(value ?? "")} onChange={(event) => change(event.target.value)}>
-    {choices.map(([key, text]) => <option value={key} key={key}>{text}</option>)}
-  </select> : type === "textarea" ? <textarea rows={5} value={String(value ?? "")} placeholder={placeholder} onChange={(event) => change(event.target.value)} required={required} />
+  if (choices) return <SelectField label={label} value={String(value ?? "")} options={choices} onChange={change} />;
+  return <label>{label}{type === "textarea" ? <textarea rows={5} value={String(value ?? "")} placeholder={placeholder} onChange={(event) => change(event.target.value)} required={required} />
     : <input type={type ?? "text"} value={String(value ?? "")} placeholder={placeholder} onChange={(event) => change(event.target.value)} required={required} min={min} max={max} autoComplete={type === "password" ? "off" : undefined} />}</label>;
 }
 
@@ -233,8 +233,8 @@ export function VoiceControls({ text }: { text: string }) {
     speak(0);
   }
   return <div className="stack"><div className="form-grid">
-    <label>Kecepatan<select value={rate} onChange={(event) => setRate(event.target.value)}>{["0.75", "1", "1.25", "1.5", "2"].map((speed) => <option key={speed}>{speed}</option>)}</select></label>
-    <label>Bahasa<select value={language} onChange={(event) => setLanguage(event.target.value)}><option value="id-ID">Indonesia</option><option value="en-US">Inggris</option></select></label></div>
+    <SelectField label="Kecepatan" value={rate} options={["0.75", "1", "1.25", "1.5", "2"].map((speed) => [speed, speed + "×"])} onChange={setRate} />
+    <SelectField label="Bahasa" value={language} options={[["id-ID", "Indonesia"], ["en-US", "Inggris"]]} onChange={setLanguage} /></div>
     <div className="actions"><button type="button" className="button primary" onClick={play}><Play size={17} /> Baca</button>
       <button type="button" className="button secondary" onClick={() => window.speechSynthesis?.pause()}><Pause size={17} /> Jeda</button>
       <button type="button" className="button secondary" onClick={() => { active.current = false; window.speechSynthesis?.cancel(); setStatus(""); }}><Square size={16} /> Berhenti</button></div>
@@ -322,10 +322,11 @@ export default function ToolPanel({ tool, initialFiles = [], save, preferences, 
     </div>;
   }
 
+  const available = needsUpload ? documents.filter(acceptsFile) : [];
   const area: ReactNode = needsUpload && <>
     <UploadField accept={accept} multiple={tool.multiple} change={changeFiles} label={id === "invoice" ? (fileName ?? "Tambahkan logo atau stempel (opsional)") : "Pilih berkas dari perangkat"} />
-    {documents.some(acceptsFile) && <label>Pilih dari ruang kerja<select value="" onChange={(event) => void addExisting(event.target.value)}>
-      <option value="">Pilih berkas tersimpan…</option>{documents.filter(acceptsFile).map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label>}
+    {!!available.length && <SelectField label="Pilih dari ruang kerja" value="" placeholder="Pilih berkas tersimpan…" options={available.map(({ id, name }) => [id, name])}
+      onChange={(id) => void addExisting(id)} />}
     {files.map((file, index) => <div className="order-row" key={file.name + index}><span>{file.name} <small className="block-muted">{formatSize(file.size)}</small></span>
       {tool.multiple && <><button type="button" className="icon-button" aria-label={"Naikkan " + file.name} disabled={index === 0} onClick={() => reorder(index, index - 1)}><ChevronUp size={18} /></button>
         <button type="button" className="icon-button" aria-label={"Turunkan " + file.name} disabled={index === files.length - 1} onClick={() => reorder(index, index + 1)}><ChevronDown size={18} /></button></>}
@@ -348,10 +349,8 @@ export default function ToolPanel({ tool, initialFiles = [], save, preferences, 
     }}>
       <p className="tool-description">{tool.description}</p>
       <fieldset className="stack tool-fields" disabled={Boolean(busy)}>
-        {id === "qr" && <div className="segmented">
-          <button type="button" aria-pressed={values.action !== "scan"} onClick={() => setOption("action", "generate")}>Buat QR</button>
-          <button type="button" aria-pressed={values.action === "scan"} onClick={() => setOption("action", "scan")}>Pindai foto</button>
-        </div>}
+        {id === "qr" && <SelectField label="Mode QR" value={values.action === "scan" ? "scan" : "generate"}
+          options={[["generate", "Buat QR"], ["scan", "Pindai foto"]]} onChange={(value) => setOption("action", value)} />}
         {id === "qr" && values.action === "scan" && <details><summary>Ambil foto kode</summary><input aria-label="Kamera untuk memindai kode" type="file" accept="image/*" capture="environment" onChange={(event) => {
           const item = event.target.files?.[0]; if (item) changeFiles([item]);
         }} /></details>}

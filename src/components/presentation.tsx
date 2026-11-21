@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { imageBlob } from "@/lib/imaging";
 import { readSlides, renderSlide, type Slide } from "@/lib/slides";
 import { LocalImage } from "./media";
+import { SelectBox } from "./select-box";
 
 export default function Presentation({ file }: { file: Blob }) {
   const [slides, setSlides] = useState<Slide[]>([]);
@@ -80,9 +81,7 @@ export default function Presentation({ file }: { file: Blob }) {
     </div>
     <div className="actions presentation-controls">
       <button className="icon-button" aria-label="Slide sebelumnya" disabled={index === 0} onClick={() => select(index - 1)}><ChevronLeft size={18} /></button>
-      <select aria-label="Lompat ke slide" value={index} onChange={(event) => select(Number(event.target.value))}>
-        {slides.map((_, item) => <option key={item} value={item}>Slide {item + 1} / {slides.length}</option>)}
-      </select>
+      <SelectBox label="Lompat ke slide" value={index} options={slides.map((_, item) => [item, `Slide ${item + 1} / ${slides.length}`])} onChange={select} />
       <button className="icon-button" aria-label="Slide berikutnya" disabled={index >= lastIndex} onClick={() => select(index + 1)}><ChevronRight size={18} /></button>
       <button className="button secondary" disabled={index >= lastIndex} onClick={() => { begin(); setAuto(!auto); }}>
         {auto ? <Pause size={17} /> : <Play size={17} />} {auto ? "Jeda pemutaran" : "Putar otomatis"}

@@ -11,6 +11,7 @@
     "lint": "eslint src scripts",
     "typecheck": "tsc --noEmit",
     "test": "node scripts/smoke.mjs",
+    "test:seo": "node scripts/seo-smoke.mjs",
     "test:webkit": "node scripts/webkit-smoke.mjs"
   },
   "dependencies": {

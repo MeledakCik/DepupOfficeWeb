@@ -10,6 +10,7 @@ import { download, type Output, type Preferences } from "@/lib/workspace";
 import { LocalImage } from "./media";
 import { OutputResults } from "./tool-panel";
 import ScanRedaction from "./scan-redaction";
+import { SelectField } from "./select-box";
 
 type Page = {
   key: string; source: Blob; thumbnail: Blob; corners: Corners; turned: number;
@@ -387,8 +388,7 @@ export default function Scanner({ save, preferences }: { save: (output: Output) 
       <h2>Pengaturan scan</h2>
       {page && <>
         <div className="form-grid">
-          <label>Filter<select value={page.filter} disabled={!!status} onChange={(event) => update({ filter: event.target.value as ScanFilter })}>
-            <option value="natural">Asli</option><option value="gray">Abu-abu</option><option value="mono">Hitam putih</option><option value="paper">Putihkan kertas</option></select></label>
+          <SelectField label="Filter" value={page.filter} disabled={!!status} options={[["natural", "Asli"], ["gray", "Abu-abu"], ["mono", "Hitam putih"], ["paper", "Putihkan kertas"]]} onChange={(filter) => update({ filter })} />
           <label>Kecerahan<input type="range" min="-60" max="60" value={page.brightness} disabled={!!status} onChange={(event) => update({ brightness: Number(event.target.value) })} /></label>
           <label>Kontras<input type="range" min="-50" max="90" value={page.contrast} disabled={!!status} onChange={(event) => update({ contrast: Number(event.target.value) })} /></label>
         </div>
@@ -397,13 +397,14 @@ export default function Scanner({ save, preferences }: { save: (output: Output) 
       </>}
       <label>Nama hasil<input value={name} disabled={!!status} onChange={(event) => { setName(event.target.value); setOutputs([]); }} /></label>
       <div className="form-grid">
-        <label>Ekspor sebagai<select value={format} disabled={!!status} onChange={(event) => { setFormat(event.target.value); setOutputs([]); }}><option value="pdf">PDF</option><option value="jpg">JPG</option><option value="docx">Word (DOCX)</option></select></label>
-        {format === "pdf" && <label>Ukuran kertas<select value={paper} disabled={!!status} onChange={(event) => { setPaper(event.target.value as typeof paper); setOutputs([]); }}>
-          <option value="A4">A4</option><option value="Letter">Letter</option><option value="photo">Ikuti foto</option><option value="id">KTP dua sisi di A4</option>
-        </select></label>}
-        {format === "docx" && <label>Isi Word<select value={wordMode} disabled={!!status} onChange={(event) => {
-          setWordMode(event.target.value === "photo" ? "photo" : "text"); setOutputs([]);
-        }}><option value="text">Teks yang dapat diedit (OCR)</option><option value="photo">Foto per halaman</option></select></label>}
+        <SelectField label="Ekspor sebagai" value={format} disabled={!!status} options={[["pdf", "PDF"], ["jpg", "JPG"], ["docx", "Word (DOCX)"]]}
+          onChange={(value) => { setFormat(value); setOutputs([]); }} />
+        {format === "pdf" && <SelectField label="Ukuran kertas" value={paper} disabled={!!status}
+          options={[["A4", "A4"], ["Letter", "Letter"], ["photo", "Ikuti foto"], ["id", "KTP dua sisi di A4"]]}
+          onChange={(value) => { setPaper(value); setOutputs([]); }} />}
+        {format === "docx" && <SelectField label="Isi Word" value={wordMode} disabled={!!status}
+          options={[["text", "Teks yang dapat diedit (OCR)"], ["photo", "Foto per halaman"]]}
+          onChange={(value) => { setWordMode(value); setOutputs([]); }} />}
       </div>
       {format === "pdf" && paper !== "id" && <label className="check-label"><input type="checkbox" checked={searchable} disabled={!!status} onChange={(event) => { setSearchable(event.target.checked); setOutputs([]); }} />Tanam teks OCR agar PDF bisa dicari</label>}
       <button className="button primary" disabled={!pages.length || !!status} onClick={() => void exportFiles()}><Save size={17} /> Buat {format.toUpperCase()}</button>

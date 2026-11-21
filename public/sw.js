@@ -1,10 +1,11 @@
-const name = "depup-office-v4";
-const shell = ["/", "/office/"];
+const name = "depup-office-v9";
+const shell = ["/", "/en/", "/office/"];
+const navigable = (path) => shell.includes(path) || /^\/(fitur|en\/tools)\/[a-z0-9-]+\/$/.test(path);
 const allowed = (url) => url.origin === self.location.origin
   && (url.pathname === "/qpdf-worker.js" || ["/_next/static/", "/runtime/", "/brand/"].some((prefix) => url.pathname.startsWith(prefix)));
 
 self.addEventListener("install", (event) => event.waitUntil(caches.open(name).then(async (cache) => {
-  await cache.addAll([...shell, "/brand/depup-mark.png", "/manifest.webmanifest"]);
+  await cache.addAll([...shell, "/brand/depup-office-192.png", "/manifest.webmanifest"]);
   const resources = new Set([
     "/brand/inter-tight-latin.woff2", "/brand/glass-pages-480.webp", "/brand/glass-pages-880.webp",
     "/brand/workspace-desktop.webp", "/brand/workspace-mobile.webp",
@@ -28,11 +29,11 @@ self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
-  if (request.mode === "navigate" && shell.includes(url.pathname)) {
+  if (request.mode === "navigate" && navigable(url.pathname)) {
     event.respondWith(fetch(request).then(async (response) => {
       if (response.ok) await (await caches.open(name)).put(url.pathname, response.clone()).catch(() => {});
       return response;
-    }).catch(() => caches.match(url.pathname)));
+    }).catch(async () => (await caches.match(url.pathname)) || caches.match(url.pathname.startsWith("/en/") ? "/en/" : "/")));
   } else if (allowed(url) && !request.headers.has("Range")) {
     event.respondWith(caches.open(name).then(async (cache) => {
       const existing = await cache.match(request);
